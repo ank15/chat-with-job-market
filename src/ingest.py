@@ -29,26 +29,32 @@ def chunk_text(text, chunk_size=config.CHUNK_SIZE, overlap=config.CHUNK_OVERLAP)
     return chunks
 
 
-def load_postings(path=config.POSTINGS_FILE):
-    """Load the postings CSV into a DataFrame.
+def load_postings(path=config.POSTINGS_FILE, limit=None):
+    """Load the postings CSV: dedupe by id and drop rows with no summary text.
 
-    TODO: dedupe on ID_COLUMN, drop rows with empty TEXT_COLUMN.
+    ``limit`` keeps the first N postings — handy for quick local runs without
+    embedding the whole corpus.
     """
     import pandas as pd
 
-    return pd.read_csv(path)
+    df = pd.read_csv(path)
+    df = df.drop_duplicates(config.ID_COLUMN)
+    df = df[df[config.TEXT_COLUMN].notna() & (df[config.TEXT_COLUMN].str.strip() != "")]
+    df = df.reset_index(drop=True)
+    if limit is not None:
+        df = df.head(limit)
+    return df
 
 
-def build_documents(df=None):
+def build_documents(df=None, limit=None):
     """Turn postings into chunked documents ready for indexing.
 
     Each chunk becomes its own document with a stable id ``"{job_id}::{n}"`` and
-    metadata (job title, company, location) carried through for citations.
-
-    TODO: pull real metadata columns once the schema is wired up.
+    metadata (job title, company, location) carried through so the app can show a
+    real citation for each retrieved chunk.
     """
     if df is None:
-        df = load_postings()
+        df = load_postings(limit=limit)
 
     documents = []
     for _, row in df.iterrows():
@@ -60,7 +66,9 @@ def build_documents(df=None):
                     "text": chunk,
                     "metadata": {
                         "job_id": job_id,
-                        # TODO: "title": row.get("job_title"), etc.
+                        "title": row.get("job_title"),
+                        "company": row.get("company"),
+                        "location": row.get("job_location"),
                     },
                 }
             )

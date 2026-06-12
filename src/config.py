@@ -9,7 +9,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = PROJECT_ROOT / "data"
 ARTIFACTS_DIR = PROJECT_ROOT / "artifacts"
-POSTINGS_FILE = DATA_DIR / "job_postings.csv"
+POSTINGS_FILE = DATA_DIR / "final_jobs.csv"  # merged file (has job_summary text)
 EVAL_SET_FILE = PROJECT_ROOT / "eval" / "datasets" / "qa_eval.jsonl"
 
 # Which columns of the postings CSV to use.

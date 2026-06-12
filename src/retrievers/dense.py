@@ -5,9 +5,11 @@ Mirrors the persisted-embedding pattern from the sister project's
 `_get_model` so this module imports fast and offline (and so tests can monkeypatch
 the encoder).
 
-TODO: persist the document embeddings to disk (like the sister project's .npy cache)
-so the corpus is only encoded once.
+The document embeddings can be persisted to disk (a `.npy` cache, like the sister
+project) so the corpus is only encoded once — see `index(..., cache_path=...)`.
 """
+
+from pathlib import Path
 
 import numpy as np
 
@@ -36,9 +38,29 @@ class DenseRetriever(Retriever):
         vecs = model.encode(list(texts), normalize_embeddings=True, show_progress_bar=False)
         return np.asarray(vecs, dtype=np.float32)
 
-    def index(self, documents):
+    def index(self, documents, cache_path=None):
+        """Embed every document into the search matrix.
+
+        If ``cache_path`` is given and a saved matrix with the same number of rows
+        already exists, it's reused (skip the expensive re-encoding); otherwise we
+        encode the corpus and save it for next time.
+        """
         self.ids = [d["id"] for d in documents]
-        self.embeddings = self._encode(d["text"] for d in documents)
+        texts = [d["text"] for d in documents]
+
+        if cache_path is not None:
+            cache_path = Path(cache_path)
+            if cache_path.exists():
+                cached = np.load(cache_path)
+                if cached.shape[0] == len(texts):
+                    self.embeddings = cached
+                    return
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            self.embeddings = self._encode(texts)
+            np.save(cache_path, self.embeddings)
+            return
+
+        self.embeddings = self._encode(texts)
 
     def score_all(self, query):
         # Normalized vectors → dot product == cosine similarity.

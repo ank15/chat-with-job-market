@@ -36,16 +36,21 @@ def build_prompt(question, documents):
 
 
 def generate_answer(question, documents, model=config.LLM_MODEL, temperature=0.2):
-    """Call the LLM to produce a grounded answer.
+    """Call the LLM to produce an answer grounded in the retrieved documents.
 
-    TODO: implement the real Groq call:
-        from groq import Groq
-        client = Groq()                      # reads GROQ_API_KEY from env
-        resp = client.chat.completions.create(
-            model=model,
-            temperature=temperature,
-            messages=[{"role": "user", "content": build_prompt(question, documents)}],
-        )
-        return resp.choices[0].message.content
+    Low ``temperature`` keeps the model factual/deterministic rather than creative —
+    what we want for a grounded Q&A system. The ``groq``/``dotenv`` imports are kept
+    local so the rest of the module stays importable (and testable) without them.
     """
-    raise NotImplementedError("Wire up the Groq call — see the docstring TODO.")
+    from dotenv import load_dotenv
+    from groq import Groq
+
+    load_dotenv()  # read GROQ_API_KEY from the .env file into the environment
+    client = Groq()
+
+    response = client.chat.completions.create(
+        model=model,
+        temperature=temperature,
+        messages=[{"role": "user", "content": build_prompt(question, documents)}],
+    )
+    return response.choices[0].message.content

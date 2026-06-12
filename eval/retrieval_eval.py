@@ -1,9 +1,12 @@
 """Retrieval evaluation — benchmark the three retrievers on a labeled set.
 
-`precision_at_k` and `recall_at_k` are implemented and unit-tested. `evaluate` runs a
-retriever over the eval questions and averages the metrics; `main` wires up all three
-retrievers so you get a side-by-side table — the direct extension of the
-TF-IDF-vs-semantic comparison from the sister project.
+`precision_at_k` / `recall_at_k` are pure and unit-tested. Relevance uses a
+transparent **proxy**: a posting is relevant to a question if its job title matches
+the question's role (e.g. "data analyst"). Retrieval happens over *chunks*, so we
+collapse retrieved chunks back to their parent postings before scoring — we care
+whether the right *job* surfaced, not the exact passage.
+
+Run: ``python -m eval.retrieval_eval``
 """
 
 import json
@@ -13,63 +16,89 @@ from src.retrievers.dense import DenseRetriever
 from src.retrievers.hybrid import HybridRetriever
 from src.retrievers.tfidf import TfidfRetriever
 
+# Retrieve this many chunks, then collapse to the top-k unique postings.
+CANDIDATE_CHUNKS = 50
+
 
 def precision_at_k(retrieved_ids, relevant_ids, k):
-    """Fraction of the top-k retrieved docs that are relevant."""
+    """Fraction of the top-k retrieved items that are relevant."""
     if k <= 0:
         return 0.0
     top_k = retrieved_ids[:k]
     relevant = set(relevant_ids)
-    hits = sum(1 for doc_id in top_k if doc_id in relevant)
-    return hits / k
+    return sum(1 for doc_id in top_k if doc_id in relevant) / k
 
 
 def recall_at_k(retrieved_ids, relevant_ids, k):
-    """Fraction of all relevant docs that appear in the top-k."""
+    """Fraction of all relevant items that appear in the top-k."""
     relevant = set(relevant_ids)
     if not relevant:
         return 0.0
     top_k = retrieved_ids[:k]
-    hits = sum(1 for doc_id in top_k if doc_id in relevant)
-    return hits / len(relevant)
+    return sum(1 for doc_id in top_k if doc_id in relevant) / len(relevant)
 
 
 def load_eval_set(path=config.EVAL_SET_FILE):
-    """Load the labeled eval set (one JSON object per line)."""
     with open(path) as f:
         return [json.loads(line) for line in f if line.strip()]
 
 
+def resolve_relevant_ids(df, title_contains):
+    """All posting ids whose job title contains `title_contains` (the proxy label)."""
+    titles = df["job_title"].fillna("").str.lower()
+    mask = titles.str.contains(title_contains.lower())
+    return set(df.loc[mask, config.ID_COLUMN])
+
+
+def _posting_id(doc_id):
+    """Map a chunk id ('job_link::3') back to its posting id ('job_link')."""
+    return doc_id.rsplit("::", 1)[0]
+
+
+def top_postings(retriever, question, k):
+    """Retrieve chunks and collapse them to the top-k unique postings, in rank order."""
+    hits = retriever.retrieve(question, top_k=CANDIDATE_CHUNKS)
+    postings = []
+    for doc_id, _ in hits:
+        pid = _posting_id(doc_id)
+        if pid not in postings:
+            postings.append(pid)
+    return postings[:k]
+
+
 def evaluate(retriever, eval_set, k=config.TOP_K):
-    """Average precision@k / recall@k for one retriever over the eval set."""
-    precisions, recalls = [], []
-    for example in eval_set:
-        hits = retriever.retrieve(example["question"], top_k=k)
-        retrieved_ids = [doc_id for doc_id, _ in hits]
-        precisions.append(precision_at_k(retrieved_ids, example["relevant_ids"], k))
-        recalls.append(recall_at_k(retrieved_ids, example["relevant_ids"], k))
-    n = max(len(eval_set), 1)
-    return {"precision@k": sum(precisions) / n, "recall@k": sum(recalls) / n}
+    """Mean precision@k for one retriever over the eval set."""
+    precisions = [
+        precision_at_k(top_postings(retriever, ex["question"], k), ex["relevant_ids"], k)
+        for ex in eval_set
+    ]
+    return sum(precisions) / max(len(eval_set), 1)
 
 
 def main():
-    documents = ingest.build_documents()
-    eval_set = load_eval_set()
+    df = ingest.load_postings()
+    documents = ingest.build_documents(df)
+    print(f"Indexing {len(documents):,} chunks from {len(df):,} postings...\n")
 
-    dense = DenseRetriever()
+    eval_set = load_eval_set()
+    for ex in eval_set:
+        ex["relevant_ids"] = resolve_relevant_ids(df, ex["relevant_title_contains"])
+
+    # Index once; the hybrid reuses the already-indexed tfidf + dense instances.
     tfidf = TfidfRetriever()
+    tfidf.index(documents)
+    dense = DenseRetriever()
+    dense.index(documents, cache_path=config.ARTIFACTS_DIR / "chunk_embeddings.npy")
     retrievers = {
         "TF-IDF": tfidf,
         "Dense": dense,
         "Hybrid": HybridRetriever(tfidf, dense),
     }
 
-    print(f"{'Retriever':<10} | precision@{config.TOP_K} | recall@{config.TOP_K}")
-    print("-" * 40)
+    print(f"{'Retriever':<10} | precision@{config.TOP_K}")
+    print("-" * 26)
     for name, retriever in retrievers.items():
-        retriever.index(documents)
-        scores = evaluate(retriever, eval_set)
-        print(f"{name:<10} | {scores['precision@k']:>11.3f} | {scores['recall@k']:>8.3f}")
+        print(f"{name:<10} | {evaluate(retriever, eval_set):>11.3f}")
 
 
 if __name__ == "__main__":

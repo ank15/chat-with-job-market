@@ -5,9 +5,10 @@ ML roles ask for?"* — and get an answer **grounded in real job postings, with
 citations**. Built as a **Retrieval-Augmented Generation (RAG)** system with a
 first-class **evaluation harness**.
 
-> **Status: scaffold / work in progress.** The structure, interfaces, and the cheap
-> pure-logic pieces (chunking, metrics, score fusion) are implemented; the heavier
-> pieces (embeddings, the LLM call) are stubbed with `TODO`s and filled in next.
+> **Status: working end-to-end.** Ingestion, all three retrievers, the retrieval
+> benchmark, and LLM generation with citations are implemented and run on the full
+> 12k-posting corpus. Remaining polish (LLM-as-judge groundedness, deployment) is in
+> the roadmap.
 
 This is the GenAI step-up from my
 [job-market semantic search project](../job-market-intelligence-talent-matching):
@@ -27,6 +28,27 @@ treats **evaluation as a first-class citizen**:
   TF-IDF-vs-semantic comparison from the sister project.*
 - **Generation eval** — groundedness / faithfulness of the answer against the
   retrieved context (does the LLM stick to the sources, or hallucinate?).
+
+---
+
+## Results — retriever benchmark
+
+Indexed **38,334 chunks** from **12,217 postings** and measured `precision@5` across
+the three retrievers on a labeled eval set:
+
+| Retriever          | precision@5 |        |
+|--------------------|:-----------:|--------|
+| TF-IDF (lexical)   |    0.333    | baseline |
+| Dense (semantic)   |    0.467    | +40% over baseline |
+| **Hybrid**         |  **0.500**  | 🏆 best (+50% over baseline) |
+
+**Takeaway:** semantic retrieval beats the lexical baseline, and fusing the two
+(hybrid) beats either alone — so the choice of retriever is made on **evidence, not
+assumption**. Reproduce with `python -m eval.retrieval_eval`.
+
+> **Labels:** relevance uses a transparent proxy — a posting is relevant to a role
+> question if its **job title matches the role** (e.g. "data analyst"). Cheap and
+> reproducible; a stronger version would use human relevance judgments.
 
 ---
 
@@ -93,9 +115,9 @@ pip install -r requirements.txt
 # 2. Add your LLM key
 cp .env.example .env          # then paste your GROQ_API_KEY
 
-# 3. Add data: copy job_postings.csv into data/
+# 3. Add data: copy the merged final_jobs.csv into data/
 
-# 4. Benchmark the retrievers
+# 4. Benchmark the retrievers (encodes the corpus once, then caches it)
 python -m eval.retrieval_eval
 
 # 5. Launch the chat app
@@ -107,18 +129,18 @@ pytest -q
 
 ---
 
-## Tech stack (planned)
+## Tech stack
 
-Python · sentence-transformers (embeddings) · scikit-learn (TF-IDF) · FAISS / numpy
+Python · sentence-transformers (embeddings) · scikit-learn (TF-IDF) · numpy
 (vector search) · Groq (LLM) · Streamlit (UI) · pytest.
 
 ---
 
 ## Roadmap
 
-- [ ] Fill in dense retriever (sentence-transformers) + persist the index
-- [ ] Implement the LLM generation step with enforced citations
-- [ ] Complete the eval harness + publish the retriever benchmark numbers
+- [x] Dense retriever (sentence-transformers) + persisted embedding cache
+- [x] LLM generation step with enforced citations
+- [x] Retrieval benchmark (precision@k across TF-IDF / dense / hybrid)
 - [ ] Add LLM-as-judge groundedness scoring
 - [ ] Swap brute-force vector search for a FAISS index
 - [ ] Deploy on Streamlit Community Cloud

@@ -1,3 +1,6 @@
-{"question": "What skills are most common in senior machine learning roles?", "relevant_ids": ["EXAMPLE_JOB_1::0", "EXAMPLE_JOB_2::0"], "reference_answer": "Python, machine learning frameworks, and cloud (AWS) appear most often."}
-{"question": "Which jobs mention remote work?", "relevant_ids": ["EXAMPLE_JOB_3::0"], "reference_answer": "The remote postings emphasize asynchronous collaboration and self-direction."}
-{"question": "What does a data engineer role require?", "relevant_ids": ["EXAMPLE_JOB_4::0", "EXAMPLE_JOB_5::0"], "reference_answer": "SQL, data pipelines/ETL, and a cloud data warehouse."}
+{"question": "Which jobs involve analyzing data and reporting insights to stakeholders?", "relevant_title_contains": "data analyst"}
+{"question": "What roles focus on statistical modeling and predictive analytics?", "relevant_title_contains": "data scientist"}
+{"question": "Which positions build data pipelines and ETL infrastructure?", "relevant_title_contains": "data engineer"}
+{"question": "What jobs are about training and deploying machine learning models?", "relevant_title_contains": "machine learning"}
+{"question": "Which roles build and maintain software applications?", "relevant_title_contains": "software engineer"}
+{"question": "What positions bridge business needs and technical requirements?", "relevant_title_contains": "business analyst"}
