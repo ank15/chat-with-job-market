@@ -1,0 +1,22 @@
+# Virtual environment
+venv/
+.venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.ipynb_checkpoints/
+
+# Environment variables (keep the example, ignore the real one)
+.env
+.env.*
+!.env.example
+
+# Data + built indexes (large / regenerated)
+data/*
+!data/.gitkeep
+artifacts/
+
+# macOS
+.DS_Store

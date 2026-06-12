@@ -1,0 +1,10 @@
+pandas
+numpy
+scikit-learn
+sentence-transformers
+groq
+python-dotenv
+streamlit
+pytest
+# Optional — swap brute-force vector search for an ANN index:
+# faiss-cpu

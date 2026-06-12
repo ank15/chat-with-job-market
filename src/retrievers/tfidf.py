@@ -1,0 +1,27 @@
+"""TF-IDF retriever — the lexical baseline.
+
+Fully implemented (sklearn is light). This is the baseline the dense and hybrid
+retrievers are benchmarked against in `eval/retrieval_eval.py`.
+"""
+
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+
+from .base import Retriever
+
+
+class TfidfRetriever(Retriever):
+    def __init__(self, **vectorizer_kwargs):
+        vectorizer_kwargs.setdefault("stop_words", "english")
+        self.vectorizer = TfidfVectorizer(**vectorizer_kwargs)
+        self.ids = []
+        self.matrix = None
+
+    def index(self, documents):
+        self.ids = [d["id"] for d in documents]
+        self.matrix = self.vectorizer.fit_transform(d["text"] for d in documents)
+
+    def score_all(self, query):
+        query_vec = self.vectorizer.transform([query])
+        sims = cosine_similarity(query_vec, self.matrix).flatten()
+        return dict(zip(self.ids, sims.tolist()))

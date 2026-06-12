@@ -1,0 +1,3 @@
+{"question": "What skills are most common in senior machine learning roles?", "relevant_ids": ["EXAMPLE_JOB_1::0", "EXAMPLE_JOB_2::0"], "reference_answer": "Python, machine learning frameworks, and cloud (AWS) appear most often."}
+{"question": "Which jobs mention remote work?", "relevant_ids": ["EXAMPLE_JOB_3::0"], "reference_answer": "The remote postings emphasize asynchronous collaboration and self-direction."}
+{"question": "What does a data engineer role require?", "relevant_ids": ["EXAMPLE_JOB_4::0", "EXAMPLE_JOB_5::0"], "reference_answer": "SQL, data pipelines/ETL, and a cloud data warehouse."}
