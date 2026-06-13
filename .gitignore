@@ -18,5 +18,8 @@ data/*
 !data/.gitkeep
 artifacts/
 
+# Runtime logs
+logs/
+
 # macOS
 .DS_Store
