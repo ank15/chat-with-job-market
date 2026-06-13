@@ -10,6 +10,7 @@ Run: ``python -m eval.retrieval_eval``
 """
 
 import json
+import time
 
 from src import config, ingest
 from src.retrievers.dense import DenseRetriever
@@ -18,6 +19,8 @@ from src.retrievers.tfidf import TfidfRetriever
 
 # Retrieve this many chunks, then collapse to the top-k unique postings.
 CANDIDATE_CHUNKS = 50
+# Depth used for MRR (how far down we look for the first relevant result).
+MRR_DEPTH = 10
 
 
 def precision_at_k(retrieved_ids, relevant_ids, k):
@@ -36,6 +39,21 @@ def recall_at_k(retrieved_ids, relevant_ids, k):
         return 0.0
     top_k = retrieved_ids[:k]
     return sum(1 for doc_id in top_k if doc_id in relevant) / len(relevant)
+
+
+def hit_rate_at_k(retrieved_ids, relevant_ids, k):
+    """1.0 if at least one relevant item is in the top-k, else 0.0."""
+    relevant = set(relevant_ids)
+    return 1.0 if any(doc_id in relevant for doc_id in retrieved_ids[:k]) else 0.0
+
+
+def reciprocal_rank(retrieved_ids, relevant_ids):
+    """1 / rank of the first relevant item (0 if none). Averaged over queries = MRR."""
+    relevant = set(relevant_ids)
+    for rank, doc_id in enumerate(retrieved_ids, start=1):
+        if doc_id in relevant:
+            return 1.0 / rank
+    return 0.0
 
 
 def load_eval_set(path=config.EVAL_SET_FILE):
@@ -67,12 +85,37 @@ def top_postings(retriever, question, k):
 
 
 def evaluate(retriever, eval_set, k=config.TOP_K):
-    """Mean precision@k for one retriever over the eval set."""
-    precisions = [
-        precision_at_k(top_postings(retriever, ex["question"], k), ex["relevant_ids"], k)
-        for ex in eval_set
-    ]
-    return sum(precisions) / max(len(eval_set), 1)
+    """Average retrieval metrics + mean query latency for one retriever.
+
+    Returns precision@k, recall@k, hit_rate@k, MRR, and latency in milliseconds.
+    """
+    # One untimed warmup query so latency reflects steady state, not the
+    # one-off model/thread warmup cost (esp. for the dense encoder).
+    if eval_set:
+        top_postings(retriever, eval_set[0]["question"], MRR_DEPTH)
+
+    p = r = h = m = 0.0
+    total_ms = 0.0
+    for ex in eval_set:
+        start = time.perf_counter()
+        ranked = top_postings(retriever, ex["question"], MRR_DEPTH)
+        total_ms += (time.perf_counter() - start) * 1000
+
+        relevant = ex["relevant_ids"]
+        top_k = ranked[:k]
+        p += precision_at_k(top_k, relevant, k)
+        r += recall_at_k(top_k, relevant, k)
+        h += hit_rate_at_k(top_k, relevant, k)
+        m += reciprocal_rank(ranked, relevant)
+
+    n = max(len(eval_set), 1)
+    return {
+        "precision": p / n,
+        "recall": r / n,
+        "hit_rate": h / n,
+        "mrr": m / n,
+        "latency_ms": total_ms / n,
+    }
 
 
 def main():
@@ -84,21 +127,33 @@ def main():
     for ex in eval_set:
         ex["relevant_ids"] = resolve_relevant_ids(df, ex["relevant_title_contains"])
 
-    # Index once; the hybrid reuses the already-indexed tfidf + dense instances.
+    # Index once (timed); the hybrid reuses the already-indexed tfidf + dense.
     tfidf = TfidfRetriever()
-    tfidf.index(documents)
     dense = DenseRetriever()
-    dense.index(documents, cache_path=config.ARTIFACTS_DIR / "chunk_embeddings.npy")
-    retrievers = {
-        "TF-IDF": tfidf,
-        "Dense": dense,
-        "Hybrid": HybridRetriever(tfidf, dense),
-    }
+    index_times = {}
+    for name, retriever, kwargs in [
+        ("TF-IDF", tfidf, {}),
+        ("Dense", dense, {"cache_path": config.ARTIFACTS_DIR / "chunk_embeddings.npy"}),
+    ]:
+        start = time.perf_counter()
+        retriever.index(documents, **kwargs)
+        index_times[name] = time.perf_counter() - start
+    index_times["Hybrid"] = index_times["TF-IDF"] + index_times["Dense"]
+    retrievers = {"TF-IDF": tfidf, "Dense": dense, "Hybrid": HybridRetriever(tfidf, dense)}
 
-    print(f"{'Retriever':<10} | precision@{config.TOP_K}")
-    print("-" * 26)
+    k = config.TOP_K
+    print(
+        f"{'Retriever':<10} | P@{k}   | R@{k}   | Hit@{k} |  MRR  | "
+        f"latency/query | index time"
+    )
+    print("-" * 76)
     for name, retriever in retrievers.items():
-        print(f"{name:<10} | {evaluate(retriever, eval_set):>11.3f}")
+        s = evaluate(retriever, eval_set, k=k)
+        print(
+            f"{name:<10} | {s['precision']:.3f} | {s['recall']:.3f} | "
+            f"{s['hit_rate']:.3f} | {s['mrr']:.3f} | "
+            f"{s['latency_ms']:>8.1f} ms  | {index_times[name]:>6.1f} s"
+        )
 
 
 if __name__ == "__main__":

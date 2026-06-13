@@ -1,7 +1,12 @@
 """Tests for the evaluation metrics and prompt/groundedness helpers."""
 
 from eval.generation_eval import lexical_groundedness
-from eval.retrieval_eval import precision_at_k, recall_at_k
+from eval.retrieval_eval import (
+    hit_rate_at_k,
+    precision_at_k,
+    recall_at_k,
+    reciprocal_rank,
+)
 from src.generate import build_prompt, format_context
 
 
@@ -22,6 +27,19 @@ class TestRetrievalMetrics:
 
     def test_recall_at_k_no_relevant(self):
         assert recall_at_k(["a", "b"], [], k=2) == 0.0
+
+    def test_hit_rate_at_k_hit(self):
+        assert hit_rate_at_k(["x", "a", "y"], ["a"], k=3) == 1.0
+
+    def test_hit_rate_at_k_miss(self):
+        assert hit_rate_at_k(["x", "y"], ["a"], k=2) == 0.0
+
+    def test_reciprocal_rank_first_relevant_at_2(self):
+        # First relevant item is at rank 2 -> 1/2.
+        assert reciprocal_rank(["x", "a", "b"], ["a", "b"]) == 0.5
+
+    def test_reciprocal_rank_none(self):
+        assert reciprocal_rank(["x", "y"], ["a"]) == 0.0
 
 
 class TestPromptBuilding:

@@ -38,13 +38,24 @@ the three retrievers on a labeled eval set:
 
 | Retriever          | precision@5 |        |
 |--------------------|:-----------:|--------|
-| TF-IDF (lexical)   |    0.333    | baseline |
-| Dense (semantic)   |    0.467    | +40% over baseline |
-| **Hybrid**         |  **0.500**  | 🏆 best (+50% over baseline) |
+| TF-IDF (lexical)   |    0.433    | baseline |
+| Dense (semantic)   |    0.467    |        |
+| **Hybrid**         |  **0.600**  | 🏆 best |
 
 **Takeaway:** semantic retrieval beats the lexical baseline, and fusing the two
 (hybrid) beats either alone — so the choice of retriever is made on **evidence, not
 assumption**. Reproduce with `python -m eval.retrieval_eval`.
+
+**Robustness fixes driven by failure cases** (this is where the eval harness earns
+its keep):
+
+- **Diversity re-ranking** ([`src/rerank.py`](src/rerank.py)) drops near-duplicate
+  results and caps results per company, so an aggregator reposting one job across
+  cities can't dominate the answer.
+- **Domain stop-words** — words like *"jobs / openings / hiring / apply"* are
+  boilerplate in a job-board corpus. Ignoring them in TF-IDF defused a
+  keyword-stuffing exploit (spammy "legal jobs, counsel jobs…" postings hijacking an
+  ML query) **and** raised hybrid precision@5 from 0.50 → 0.60.
 
 > **Labels:** relevance uses a transparent proxy — a posting is relevant to a role
 > question if its **job title matches the role** (e.g. "data analyst"). Cheap and
